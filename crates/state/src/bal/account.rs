@@ -87,7 +87,7 @@ impl AccountBal {
                                 .into_iter()
                                 .map(|key| AlloySlotChanges::new(key, Default::default())),
                         )
-                        .map(|slot| (slot.slot, BalWrites::from(slot.changes))),
+                        .map(|slot| (U256::from(slot.slot), BalWrites::from(slot.changes))),
                 ),
             },
         ))
@@ -100,14 +100,14 @@ impl AccountBal {
         let mut storage_changes = Vec::new();
         for (key, value) in self.storage.storage {
             if value.writes.is_empty() {
-                storage_reads.push(key);
+                storage_reads.push(key.into());
             } else {
                 storage_changes.push(AlloySlotChanges::new(
-                    key,
+                    key.into(),
                     value
                         .writes
                         .into_iter()
-                        .map(|(index, value)| AlloyStorageChange::new(index, value))
+                        .map(|(index, value)| AlloyStorageChange::new(index, value.into()))
                         .collect(),
                 ));
             }
@@ -122,7 +122,7 @@ impl AccountBal {
                 .balance
                 .writes
                 .into_iter()
-                .map(|(index, value)| AlloyBalanceChange::new(index, value))
+                .map(|(index, value)| AlloyBalanceChange::new(index, value.into()))
                 .collect(),
             nonce_changes: self
                 .account_info

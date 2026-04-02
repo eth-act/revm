@@ -6,7 +6,7 @@ use plain_hasher::PlainHasher;
 use revm::{
     context::result::{EVMError, ExecutionResult, HaltReason, InvalidTransaction},
     database::{bal::EvmDatabaseError, EmptyDB, PlainAccount, State},
-    primitives::{keccak256, Address, Log, B256, U256},
+    primitives::{keccak256, Address, Log, B256},
 };
 use triehash::sec_trie_root;
 
@@ -48,7 +48,7 @@ pub fn state_merkle_trie_root<'a>(
 #[derive(RlpEncodable, RlpMaxEncodedLen)]
 struct TrieAccount {
     nonce: u64,
-    balance: U256,
+    balance: alloy_primitives::U256,
     root_hash: B256,
     code_hash: B256,
 }
@@ -57,12 +57,17 @@ impl TrieAccount {
     fn new(acc: &PlainAccount) -> Self {
         Self {
             nonce: acc.info.nonce,
-            balance: acc.info.balance,
+            balance: acc.info.balance.into(),
             root_hash: sec_trie_root::<KeccakHasher, _, _, _>(
                 acc.storage
                     .iter()
                     .filter(|(_k, &v)| !v.is_zero())
-                    .map(|(k, v)| (k.to_be_bytes::<32>(), alloy_rlp::encode_fixed_size(v))),
+                    .map(|(k, v)| {
+                        (
+                            k.to_be_bytes::<32>(),
+                            alloy_rlp::encode_fixed_size(&alloy_primitives::U256::from(*v)),
+                        )
+                    }),
             ),
             code_hash: acc.info.code_hash,
         }
