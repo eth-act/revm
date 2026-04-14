@@ -6,7 +6,7 @@ use plain_hasher::PlainHasher;
 use revm::{
     context::result::{EVMError, ExecutionResult, HaltReason, InvalidTransaction},
     database::{bal::EvmDatabaseError, EmptyDB, PlainAccount, State},
-    primitives::{keccak256, Address, Log, B256},
+    primitives::{alloy_primitives, keccak256, Address, Log, B256},
 };
 use triehash::sec_trie_root;
 
@@ -63,9 +63,10 @@ impl TrieAccount {
                     .iter()
                     .filter(|(_k, &v)| !v.is_zero())
                     .map(|(k, v)| {
+                        let alloy_v: alloy_primitives::U256 = (*v).into();
                         (
                             k.to_be_bytes::<32>(),
-                            alloy_rlp::encode_fixed_size(&alloy_primitives::U256::from(*v)),
+                            alloy_rlp::encode_fixed_size(&alloy_v),
                         )
                     }),
             ),
