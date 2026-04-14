@@ -33,7 +33,7 @@ pub mod uint;
 
 pub use constants::*;
 pub use once_lock::OnceLock;
-pub use uint::U256;
+pub use uint::{install_uint256_backend, DefaultUint256Ops, Uint256Ops, U256};
 
 // Reexport alloy primitives.
 
