@@ -33,19 +33,11 @@ const fn ru(limbs: [u64; 4]) -> alloy_primitives::U256 {
 ///
 /// All values cross the boundary as `[u64; 4]` in little-endian limb order.
 pub trait Uint256Ops: Send + Sync + core::fmt::Debug {
+    // Only operations that are overridden by a custom backend are listed here.
+    // Operations absent from this trait bypass dynamic dispatch entirely —
+    // their `U256` methods call ruint directly.
+
     // ── Overflowing arithmetic ───────────────────────────────────────
-
-    /// Wrapping addition with overflow flag. Returns `(result, overflowed)`.
-    fn overflowing_add(&self, a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
-        let (v, o) = ru(a).overflowing_add(ru(b));
-        (*v.as_limbs(), o)
-    }
-
-    /// Wrapping subtraction with underflow flag. Returns `(result, underflowed)`.
-    fn overflowing_sub(&self, a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
-        let (v, o) = ru(a).overflowing_sub(ru(b));
-        (*v.as_limbs(), o)
-    }
 
     /// Wrapping multiplication with overflow flag. Returns `(result, overflowed)`.
     fn overflowing_mul(&self, a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
@@ -55,11 +47,6 @@ pub trait Uint256Ops: Send + Sync + core::fmt::Debug {
 
     // ── Wrapping arithmetic ──────────────────────────────────────────
 
-    /// Wrapping (modular) multiplication.
-    fn wrapping_mul(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        *ru(a).wrapping_mul(ru(b)).as_limbs()
-    }
-
     /// Wrapping division. Panics if `b` is zero.
     fn wrapping_div(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         *ru(a).wrapping_div(ru(b)).as_limbs()
@@ -68,11 +55,6 @@ pub trait Uint256Ops: Send + Sync + core::fmt::Debug {
     /// Wrapping remainder. Panics if `b` is zero.
     fn wrapping_rem(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         *ru(a).wrapping_rem(ru(b)).as_limbs()
-    }
-
-    /// Wrapping two's-complement negation.
-    fn wrapping_neg(&self, a: [u64; 4]) -> [u64; 4] {
-        *ru(a).wrapping_neg().as_limbs()
     }
 
     // ── Saturating arithmetic ────────────────────────────────────────
@@ -106,58 +88,11 @@ pub trait Uint256Ops: Send + Sync + core::fmt::Debug {
         *(ru(a) % ru(b)).as_limbs()
     }
 
-    // ── EVM-specific modular / exponential arithmetic ────────────────
+    // ── EVM-specific exponential arithmetic ─────────────────────────
 
     /// Exponentiation: `base ^ exp`.
     fn pow(&self, base: [u64; 4], exp: [u64; 4]) -> [u64; 4] {
         *ru(base).pow(ru(exp)).as_limbs()
-    }
-
-    /// Modular addition: `(a + b) % modulus`.
-    fn add_mod(&self, a: [u64; 4], b: [u64; 4], modulus: [u64; 4]) -> [u64; 4] {
-        *ru(a).add_mod(ru(b), ru(modulus)).as_limbs()
-    }
-
-    /// Modular multiplication: `(a * b) % modulus`.
-    fn mul_mod(&self, a: [u64; 4], b: [u64; 4], modulus: [u64; 4]) -> [u64; 4] {
-        *ru(a).mul_mod(ru(b), ru(modulus)).as_limbs()
-    }
-
-    /// Arithmetic (signed) right shift: sign bit is replicated; `shift < 256`.
-    fn arithmetic_shr(&self, a: [u64; 4], shift: usize) -> [u64; 4] {
-        *ru(a).arithmetic_shr(shift).as_limbs()
-    }
-
-    // ── Bitwise ─────────────────────────────────────────────────────
-
-    /// Bitwise NOT.
-    fn not(&self, a: [u64; 4]) -> [u64; 4] {
-        [!a[0], !a[1], !a[2], !a[3]]
-    }
-
-    /// Bitwise AND.
-    fn bitand(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        [a[0] & b[0], a[1] & b[1], a[2] & b[2], a[3] & b[3]]
-    }
-
-    /// Bitwise OR.
-    fn bitor(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        [a[0] | b[0], a[1] | b[1], a[2] | b[2], a[3] | b[3]]
-    }
-
-    /// Bitwise XOR.
-    fn bitxor(&self, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        [a[0] ^ b[0], a[1] ^ b[1], a[2] ^ b[2], a[3] ^ b[3]]
-    }
-
-    /// Left shift by `shift` bits.
-    fn shl(&self, a: [u64; 4], shift: usize) -> [u64; 4] {
-        *(ru(a) << shift).as_limbs()
-    }
-
-    /// Logical right shift by `shift` bits.
-    fn shr(&self, a: [u64; 4], shift: usize) -> [u64; 4] {
-        *(ru(a) >> shift).as_limbs()
     }
 }
 
@@ -418,10 +353,10 @@ impl U256 {
 // ---------------------------------------------------------------------------
 
 impl U256 {
-    /// Wrapping multiplication.
+    /// Wrapping multiplication. Bypasses backend dispatch — uses ruint directly.
     #[inline]
     pub fn wrapping_mul(self, rhs: Self) -> Self {
-        Self(ops().wrapping_mul(self.0, rhs.0))
+        Self(*ru(self.0).wrapping_mul(ru(rhs.0)).as_limbs())
     }
 
     /// Wrapping division. Panics if `rhs` is zero.
@@ -436,10 +371,10 @@ impl U256 {
         Self(ops().wrapping_rem(self.0, rhs.0))
     }
 
-    /// Wrapping (two's-complement) negation.
+    /// Wrapping (two's-complement) negation. Bypasses backend dispatch — uses ruint directly.
     #[inline]
     pub fn wrapping_neg(self) -> Self {
-        Self(ops().wrapping_neg(self.0))
+        Self(*ru(self.0).wrapping_neg().as_limbs())
     }
 
     /// Saturating multiplication.
@@ -473,22 +408,22 @@ impl U256 {
         Self(ops().pow(self.0, exp.0))
     }
 
-    /// Modular addition: `(self + rhs) % modulus`.
+    /// Modular addition: `(self + rhs) % modulus`. Bypasses backend dispatch — uses ruint directly.
     #[inline]
     pub fn add_mod(self, rhs: Self, modulus: Self) -> Self {
-        Self(ops().add_mod(self.0, rhs.0, modulus.0))
+        Self(*ru(self.0).add_mod(ru(rhs.0), ru(modulus.0)).as_limbs())
     }
 
-    /// Modular multiplication: `(self * rhs) % modulus`.
+    /// Modular multiplication: `(self * rhs) % modulus`. Bypasses backend dispatch — uses ruint directly.
     #[inline]
     pub fn mul_mod(self, rhs: Self, modulus: Self) -> Self {
-        Self(ops().mul_mod(self.0, rhs.0, modulus.0))
+        Self(*ru(self.0).mul_mod(ru(rhs.0), ru(modulus.0)).as_limbs())
     }
 
-    /// Arithmetic (signed) right shift. `shift` must be < 256.
+    /// Arithmetic (signed) right shift. `shift` must be < 256. Bypasses backend dispatch — uses ruint directly.
     #[inline]
     pub fn arithmetic_shr(self, shift: usize) -> Self {
-        Self(ops().arithmetic_shr(self.0, shift))
+        Self(*ru(self.0).arithmetic_shr(shift).as_limbs())
     }
 }
 
@@ -572,19 +507,21 @@ impl U256 {
 // Operator implementations — delegate to backend.
 // ---------------------------------------------------------------------------
 
-// Arithmetic: wrapping semantics (overflow is discarded), delegating to ops().
+// Arithmetic: wrapping semantics (overflow is discarded).
+// Add/Sub bypass backend dispatch — use ruint const-fn paths directly.
+// Mul/Div/Rem delegate to the installed backend (overridable for acceleration).
 impl core::ops::Add for U256 {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
-        Self(ops().overflowing_add(self.0, rhs.0).0)
+        self.wrapping_add(rhs)
     }
 }
 impl core::ops::Sub for U256 {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self {
-        Self(ops().overflowing_sub(self.0, rhs.0).0)
+        self.wrapping_sub(rhs)
     }
 }
 impl core::ops::Mul for U256 {
@@ -609,49 +546,64 @@ impl core::ops::Rem for U256 {
     }
 }
 
-// Bitwise.
+// Bitwise — bypass backend dispatch, operate directly on limbs / ruint.
 impl core::ops::Not for U256 {
     type Output = Self;
     #[inline]
     fn not(self) -> Self {
-        Self(ops().not(self.0))
+        Self([!self.0[0], !self.0[1], !self.0[2], !self.0[3]])
     }
 }
 impl core::ops::BitAnd for U256 {
     type Output = Self;
     #[inline]
     fn bitand(self, rhs: Self) -> Self {
-        Self(ops().bitand(self.0, rhs.0))
+        Self([
+            self.0[0] & rhs.0[0],
+            self.0[1] & rhs.0[1],
+            self.0[2] & rhs.0[2],
+            self.0[3] & rhs.0[3],
+        ])
     }
 }
 impl core::ops::BitOr for U256 {
     type Output = Self;
     #[inline]
     fn bitor(self, rhs: Self) -> Self {
-        Self(ops().bitor(self.0, rhs.0))
+        Self([
+            self.0[0] | rhs.0[0],
+            self.0[1] | rhs.0[1],
+            self.0[2] | rhs.0[2],
+            self.0[3] | rhs.0[3],
+        ])
     }
 }
 impl core::ops::BitXor for U256 {
     type Output = Self;
     #[inline]
     fn bitxor(self, rhs: Self) -> Self {
-        Self(ops().bitxor(self.0, rhs.0))
+        Self([
+            self.0[0] ^ rhs.0[0],
+            self.0[1] ^ rhs.0[1],
+            self.0[2] ^ rhs.0[2],
+            self.0[3] ^ rhs.0[3],
+        ])
     }
 }
 
-// Shifts.
+// Shifts — bypass backend dispatch, use ruint directly.
 impl core::ops::Shl<usize> for U256 {
     type Output = Self;
     #[inline]
     fn shl(self, rhs: usize) -> Self {
-        Self(ops().shl(self.0, rhs))
+        Self(*(ru(self.0) << rhs).as_limbs())
     }
 }
 impl core::ops::Shr<usize> for U256 {
     type Output = Self;
     #[inline]
     fn shr(self, rhs: usize) -> Self {
-        Self(ops().shr(self.0, rhs))
+        Self(*(ru(self.0) >> rhs).as_limbs())
     }
 }
 impl core::ops::ShlAssign<usize> for U256 {
