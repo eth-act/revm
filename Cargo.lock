@@ -1853,6 +1853,7 @@ dependencies = [
 name = "example-erc20-gas"
 version = "0.0.0"
 dependencies = [
+ "alloy-primitives",
  "alloy-provider",
  "alloy-sol-types",
  "anyhow",
@@ -1884,6 +1885,7 @@ name = "example-uniswap-v2-usdc-swap"
 version = "0.0.0"
 dependencies = [
  "alloy-eips",
+ "alloy-primitives",
  "alloy-provider",
  "alloy-sol-types",
  "anyhow",
@@ -3660,6 +3662,7 @@ dependencies = [
 name = "revm-interpreter"
 version = "32.0.0"
 dependencies = [
+ "alloy-primitives",
  "revm-bytecode",
  "revm-context-interface",
  "revm-primitives",
@@ -3703,6 +3706,7 @@ dependencies = [
  "alloy-primitives",
  "num_enum",
  "once_cell",
+ "ruint",
  "serde",
 ]
 
