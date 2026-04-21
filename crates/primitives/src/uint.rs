@@ -157,9 +157,25 @@ impl U256 {
     }
 
     /// Wrapping (modular) multiplication.
+    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub fn wrapping_mul(self, rhs: Self) -> Self {
         Self(self.0.wrapping_mul(rhs.0))
+    }
+
+    /// Wrapping (modular) multiplication.
+    #[cfg(feature = "uint-acceleration")]
+    #[inline]
+    pub fn wrapping_mul(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            overflowing_mul256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
     }
 
     /// Wrapping division. Panics if `rhs` is zero.
@@ -486,6 +502,7 @@ macro_rules! impl_bin_op_assign {
 // Additive / bitwise (both sides same type)
 impl_bin_op!(Add, add);
 impl_bin_op!(Sub, sub);
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Mul, mul);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Div, div);
@@ -497,6 +514,7 @@ impl_bin_op!(BitXor, bitxor);
 
 impl_bin_op_assign!(AddAssign, add_assign);
 impl_bin_op_assign!(SubAssign, sub_assign);
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(MulAssign, mul_assign);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(DivAssign, div_assign);
@@ -505,6 +523,23 @@ impl_bin_op_assign!(RemAssign, rem_assign);
 impl_bin_op_assign!(BitAndAssign, bitand_assign);
 impl_bin_op_assign!(BitOrAssign, bitor_assign);
 impl_bin_op_assign!(BitXorAssign, bitxor_assign);
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::Mul for U256 {
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: Self) -> Self {
+        self.wrapping_mul(rhs)
+    }
+}
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::MulAssign for U256 {
+    #[inline]
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
 
 #[cfg(feature = "uint-acceleration")]
 impl core::ops::Div for U256 {
