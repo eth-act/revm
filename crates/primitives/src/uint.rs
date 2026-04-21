@@ -21,6 +21,20 @@ extern "C" {
 }
 
 // ---------------------------------------------------------------------------
+// Extern C acceleration (target_os = "zkvm", target_vendor = "zisk")
+// ---------------------------------------------------------------------------
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+extern "C" {
+    fn overflowing_add256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
+    fn overflowing_sub256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
+    fn checked_add256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
+    fn checked_sub256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
+    fn saturating_add256_c(a: *const u64, b: *const u64, result: *mut u64);
+    fn saturating_sub256_c(a: *const u64, b: *const u64, result: *mut u64);
+}
+
+// ---------------------------------------------------------------------------
 // U256
 // ---------------------------------------------------------------------------
 
@@ -145,15 +159,47 @@ impl U256 {
 
 impl U256 {
     /// Wrapping (modular) addition.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn wrapping_add(self, rhs: Self) -> Self {
         Self(self.0.wrapping_add(rhs.0))
     }
 
+    /// Wrapping (modular) addition.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn wrapping_add(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            overflowing_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
+    }
+
     /// Wrapping (modular) subtraction.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn wrapping_sub(self, rhs: Self) -> Self {
         Self(self.0.wrapping_sub(rhs.0))
+    }
+
+    /// Wrapping (modular) subtraction.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn wrapping_sub(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            overflowing_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
     }
 
     /// Wrapping (modular) multiplication.
@@ -223,15 +269,47 @@ impl U256 {
     }
 
     /// Saturating addition. Saturates at `U256::MAX` on overflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn saturating_add(self, rhs: Self) -> Self {
         Self(self.0.saturating_add(rhs.0))
     }
 
+    /// Saturating addition. Saturates at `U256::MAX` on overflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn saturating_add(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            saturating_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
+    }
+
     /// Saturating subtraction. Saturates at zero on underflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn saturating_sub(self, rhs: Self) -> Self {
         Self(self.0.saturating_sub(rhs.0))
+    }
+
+    /// Saturating subtraction. Saturates at zero on underflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn saturating_sub(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            saturating_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
     }
 
     /// Saturating multiplication. Saturates at `U256::MAX` on overflow.
@@ -257,6 +335,7 @@ impl U256 {
     }
 
     /// Checked addition. Returns `None` on overflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
         match self.0.checked_add(rhs.0) {
@@ -265,12 +344,51 @@ impl U256 {
         }
     }
 
+    /// Checked addition. Returns `None` on overflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn checked_add(self, rhs: Self) -> Option<Self> {
+        let mut result = [0u64; 4];
+        let success = unsafe {
+            checked_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        if success == 1 {
+            Some(Self::from_limbs(result))
+        } else {
+            None
+        }
+    }
+
     /// Checked subtraction. Returns `None` on underflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
         match self.0.checked_sub(rhs.0) {
             Some(v) => Some(Self(v)),
             None => None,
+        }
+    }
+
+    /// Checked subtraction. Returns `None` on underflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn checked_sub(self, rhs: Self) -> Option<Self> {
+        let mut result = [0u64; 4];
+        let success = unsafe {
+            checked_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        if success == 1 {
+            Some(Self::from_limbs(result))
+        } else {
+            None
         }
     }
 
@@ -327,10 +445,49 @@ impl U256 {
     }
 
     /// Overflowing addition. Returns the result and a flag indicating overflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     #[inline]
     pub const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let (v, o) = self.0.overflowing_add(rhs.0);
         (Self(v), o)
+    }
+
+    /// Overflowing addition. Returns the result and a flag indicating overflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+        let mut result = [0u64; 4];
+        let overflow = unsafe {
+            overflowing_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        (Self::from_limbs(result), overflow != 0)
+    }
+
+    /// Overflowing subtraction. Returns the result and a flag indicating underflow.
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[inline]
+    pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        let (v, o) = self.0.overflowing_sub(rhs.0);
+        (Self(v), o)
+    }
+
+    /// Overflowing subtraction. Returns the result and a flag indicating underflow.
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[inline]
+    pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        let mut result = [0u64; 4];
+        let underflow = unsafe {
+            overflowing_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        (Self::from_limbs(result), underflow != 0)
     }
 
     /// Overflowing multiplication. Returns the result and a flag indicating overflow.
@@ -500,7 +657,9 @@ macro_rules! impl_bin_op_assign {
 }
 
 // Additive / bitwise (both sides same type)
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 impl_bin_op!(Add, add);
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 impl_bin_op!(Sub, sub);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Mul, mul);
@@ -512,7 +671,9 @@ impl_bin_op!(BitAnd, bitand);
 impl_bin_op!(BitOr, bitor);
 impl_bin_op!(BitXor, bitxor);
 
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 impl_bin_op_assign!(AddAssign, add_assign);
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 impl_bin_op_assign!(SubAssign, sub_assign);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(MulAssign, mul_assign);
@@ -523,6 +684,40 @@ impl_bin_op_assign!(RemAssign, rem_assign);
 impl_bin_op_assign!(BitAndAssign, bitand_assign);
 impl_bin_op_assign!(BitOrAssign, bitor_assign);
 impl_bin_op_assign!(BitXorAssign, bitxor_assign);
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+impl core::ops::Add for U256 {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+impl core::ops::AddAssign for U256 {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+impl core::ops::Sub for U256 {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+impl core::ops::SubAssign for U256 {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
 
 #[cfg(feature = "uint-acceleration")]
 impl core::ops::Mul for U256 {
