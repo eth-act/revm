@@ -11,13 +11,13 @@ mod backend {
 
 #[cfg(feature = "uint-acceleration")]
 extern "C" {
+    fn overflowing_add256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
+    fn overflowing_sub256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
     fn overflowing_mul256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
     fn overflowing_pow256_c(base: *const u64, exp: *const u64, result: *mut u64) -> u8;
+    fn checked_add256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
     fn checked_mul256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
-    fn checked_div256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
     fn saturating_mul256_c(a: *const u64, b: *const u64, result: *mut u64);
-    fn wrapping_div256_c(a: *const u64, b: *const u64, result: *mut u64);
-    fn wrapping_rem256_c(a: *const u64, b: *const u64, result: *mut u64);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,15 +145,47 @@ impl U256 {
 
 impl U256 {
     /// Wrapping (modular) addition.
+    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub const fn wrapping_add(self, rhs: Self) -> Self {
         Self(self.0.wrapping_add(rhs.0))
     }
 
+    /// Wrapping (modular) addition.
+    #[cfg(feature = "uint-acceleration")]
+    #[inline]
+    pub fn wrapping_add(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            overflowing_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
+    }
+
     /// Wrapping (modular) subtraction.
+    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub const fn wrapping_sub(self, rhs: Self) -> Self {
         Self(self.0.wrapping_sub(rhs.0))
+    }
+
+    /// Wrapping (modular) subtraction.
+    #[cfg(feature = "uint-acceleration")]
+    #[inline]
+    pub fn wrapping_sub(self, rhs: Self) -> Self {
+        let mut result = [0u64; 4];
+        unsafe {
+            overflowing_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        Self::from_limbs(result)
     }
 
     /// Wrapping (modular) multiplication.
@@ -179,47 +211,15 @@ impl U256 {
     }
 
     /// Wrapping division. Panics if `rhs` is zero.
-    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub fn wrapping_div(self, rhs: Self) -> Self {
         Self(self.0.wrapping_div(rhs.0))
     }
 
-    /// Wrapping division. Panics if `rhs` is zero.
-    #[cfg(feature = "uint-acceleration")]
-    #[inline]
-    pub fn wrapping_div(self, rhs: Self) -> Self {
-        let mut result = [0u64; 4];
-        unsafe {
-            wrapping_div256_c(
-                self.as_limbs().as_ptr(),
-                rhs.as_limbs().as_ptr(),
-                result.as_mut_ptr(),
-            )
-        };
-        Self::from_limbs(result)
-    }
-
     /// Wrapping remainder. Panics if `rhs` is zero.
-    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub fn wrapping_rem(self, rhs: Self) -> Self {
         Self(self.0.wrapping_rem(rhs.0))
-    }
-
-    /// Wrapping remainder. Panics if `rhs` is zero.
-    #[cfg(feature = "uint-acceleration")]
-    #[inline]
-    pub fn wrapping_rem(self, rhs: Self) -> Self {
-        let mut result = [0u64; 4];
-        unsafe {
-            wrapping_rem256_c(
-                self.as_limbs().as_ptr(),
-                rhs.as_limbs().as_ptr(),
-                result.as_mut_ptr(),
-            )
-        };
-        Self::from_limbs(result)
     }
 
     /// Saturating addition. Saturates at `U256::MAX` on overflow.
@@ -257,11 +257,31 @@ impl U256 {
     }
 
     /// Checked addition. Returns `None` on overflow.
+    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
         match self.0.checked_add(rhs.0) {
             Some(v) => Some(Self(v)),
             None => None,
+        }
+    }
+
+    /// Checked addition. Returns `None` on overflow.
+    #[cfg(feature = "uint-acceleration")]
+    #[inline]
+    pub fn checked_add(self, rhs: Self) -> Option<Self> {
+        let mut result = [0u64; 4];
+        let success = unsafe {
+            checked_add256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        if success == 1 {
+            Some(Self::from_limbs(result))
+        } else {
+            None
         }
     }
 
@@ -301,36 +321,55 @@ impl U256 {
     }
 
     /// Checked division. Returns `None` if `rhs` is zero.
-    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
     pub fn checked_div(self, rhs: Self) -> Option<Self> {
         self.0.checked_div(rhs.0).map(Self)
     }
 
-    /// Checked division. Returns `None` if `rhs` is zero.
+    /// Overflowing addition. Returns the result and a flag indicating overflow.
+    #[cfg(not(feature = "uint-acceleration"))]
+    #[inline]
+    pub const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+        let (v, o) = self.0.overflowing_add(rhs.0);
+        (Self(v), o)
+    }
+
+    /// Overflowing addition. Returns the result and a flag indicating overflow.
     #[cfg(feature = "uint-acceleration")]
     #[inline]
-    pub fn checked_div(self, rhs: Self) -> Option<Self> {
+    pub fn overflowing_add(self, rhs: Self) -> (Self, bool) {
         let mut result = [0u64; 4];
-        let success = unsafe {
-            checked_div256_c(
+        let overflow = unsafe {
+            overflowing_add256_c(
                 self.as_limbs().as_ptr(),
                 rhs.as_limbs().as_ptr(),
                 result.as_mut_ptr(),
             )
         };
-        if success == 1 {
-            Some(Self::from_limbs(result))
-        } else {
-            None
-        }
+        (Self::from_limbs(result), overflow != 0)
     }
 
-    /// Overflowing addition. Returns the result and a flag indicating overflow.
+    /// Overflowing subtraction. Returns the result and a flag indicating underflow (borrow).
+    #[cfg(not(feature = "uint-acceleration"))]
     #[inline]
-    pub const fn overflowing_add(self, rhs: Self) -> (Self, bool) {
-        let (v, o) = self.0.overflowing_add(rhs.0);
+    pub const fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        let (v, o) = self.0.overflowing_sub(rhs.0);
         (Self(v), o)
+    }
+
+    /// Overflowing subtraction. Returns the result and a flag indicating underflow (borrow).
+    #[cfg(feature = "uint-acceleration")]
+    #[inline]
+    pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        let mut result = [0u64; 4];
+        let borrow = unsafe {
+            overflowing_sub256_c(
+                self.as_limbs().as_ptr(),
+                rhs.as_limbs().as_ptr(),
+                result.as_mut_ptr(),
+            )
+        };
+        (Self::from_limbs(result), borrow != 0)
     }
 
     /// Overflowing multiplication. Returns the result and a flag indicating overflow.
@@ -500,29 +539,63 @@ macro_rules! impl_bin_op_assign {
 }
 
 // Additive / bitwise (both sides same type)
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Add, add);
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Sub, sub);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Mul, mul);
-#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Div, div);
-#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op!(Rem, rem);
 impl_bin_op!(BitAnd, bitand);
 impl_bin_op!(BitOr, bitor);
 impl_bin_op!(BitXor, bitxor);
 
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(AddAssign, add_assign);
+#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(SubAssign, sub_assign);
 #[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(MulAssign, mul_assign);
-#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(DivAssign, div_assign);
-#[cfg(not(feature = "uint-acceleration"))]
 impl_bin_op_assign!(RemAssign, rem_assign);
 impl_bin_op_assign!(BitAndAssign, bitand_assign);
 impl_bin_op_assign!(BitOrAssign, bitor_assign);
 impl_bin_op_assign!(BitXorAssign, bitxor_assign);
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::Add for U256 {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+}
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::AddAssign for U256 {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::Sub for U256 {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
+#[cfg(feature = "uint-acceleration")]
+impl core::ops::SubAssign for U256 {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
 
 #[cfg(feature = "uint-acceleration")]
 impl core::ops::Mul for U256 {
@@ -538,56 +611,6 @@ impl core::ops::MulAssign for U256 {
     #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
-    }
-}
-
-#[cfg(feature = "uint-acceleration")]
-impl core::ops::Div for U256 {
-    type Output = Self;
-    #[inline]
-    fn div(self, rhs: Self) -> Self {
-        let mut result = [0u64; 4];
-        unsafe {
-            wrapping_div256_c(
-                self.as_limbs().as_ptr(),
-                rhs.as_limbs().as_ptr(),
-                result.as_mut_ptr(),
-            )
-        };
-        Self::from_limbs(result)
-    }
-}
-
-#[cfg(feature = "uint-acceleration")]
-impl core::ops::Rem for U256 {
-    type Output = Self;
-    #[inline]
-    fn rem(self, rhs: Self) -> Self {
-        let mut result = [0u64; 4];
-        unsafe {
-            wrapping_rem256_c(
-                self.as_limbs().as_ptr(),
-                rhs.as_limbs().as_ptr(),
-                result.as_mut_ptr(),
-            )
-        };
-        Self::from_limbs(result)
-    }
-}
-
-#[cfg(feature = "uint-acceleration")]
-impl core::ops::DivAssign for U256 {
-    #[inline]
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs;
-    }
-}
-
-#[cfg(feature = "uint-acceleration")]
-impl core::ops::RemAssign for U256 {
-    #[inline]
-    fn rem_assign(&mut self, rhs: Self) {
-        *self = *self % rhs;
     }
 }
 
